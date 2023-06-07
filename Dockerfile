@@ -31,6 +31,7 @@ RUN apt-get update \
         python3-pip \
         firefox \
         sudo \
+        unzip \
         git \
         curl \
         default-jdk \
