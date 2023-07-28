@@ -19,6 +19,8 @@ const logger = require("./utils/log");
 //========= Create website for dashboard/uptime =========//
 ///////////////////////////////////////////////////////////
 
+const dashboardPort = 3000;
+
 const dashboard = http.createServer(function (_req, res) {
     let [n, type, data] = _req.url.split(/^\/(set_cookie)\?/);
     if (type == 'set_cookie') {
@@ -35,9 +37,9 @@ const dashboard = http.createServer(function (_req, res) {
     res.end();
 });
 
-dashboard.listen(process.env.port || 0);
-
-logger("Opened server site...", "[ Starting ]");
+dashboard.listen(dashboardPort, () => {
+    logger(`Opened server site on port ${dashboardPort}...`, "[ Starting ]");
+});
 
 /////////////////////////////////////////////////////////
 //========= Create start bot and make it loop =========//
@@ -63,17 +65,18 @@ function startBot(message) {
     child.on("error", function (error) {
         logger("An error occurred: " + JSON.stringify(error), "[ Starting ]");
     });
-};
+}
+
 ////////////////////////////////////////////////
 //========= Check update from Github =========//
 ////////////////////////////////////////////////
-
 
 axios.get("https://raw.githubusercontent.com/d-jukie/miraiv2/main/package.json").then((res) => {
     logger(res['data']['name'], "[ NAME ]");
     logger("Version: " + res['data']['version'], "[ VERSION ]");
     logger(res['data']['description'], "[ DESCRIPTION ]");
 });
+
 startBot();
 /*axios.get("https://raw.githubusercontent.com/d-jukie/miraiv2_fix/main/package.json").then((res) => {
     const local = JSON.parse(readFileSync('./package.json'));
@@ -96,3 +99,4 @@ startBot();
     } else logger('You are using the latest version!', '[ CHECK UPDATE ]'), startBot();
 }).catch(err => logger("Unable to check update.", "[ CHECK UPDATE ]"));*/
 // THIZ BOT WAS MADE BY ME(CATALIZCS) AND MY BROTHER SPERMLORD - DO NOT STEAL MY CODE (つ ͡ ° ͜ʖ ͡° )つ ✄ ╰⋃╯
+        
