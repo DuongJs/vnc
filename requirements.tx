@@ -1,0 +1,12 @@
+beautifulsoup4==4.9.3
+urllib3==1.26.4
+requests==2.25.1
+uuid==1.30
+hmac==1.1.2
+concurrent-futures==3.2.1
+hashlib==3.9.0
+random==2.2
+datetime==4.3
+base64==1.1.2
+time==3.7.1
+re==2.2.1
