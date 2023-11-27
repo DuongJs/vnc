@@ -1,106 +1,102 @@
-# syntax=docker/dockerfile:experimental
+FROM buildpack-deps:22.04-curl
 
-# ./hooks/build latest
-# ./hooks/test latest
-
-### Example: Build and test 'dev' tag locally like
-### ./hooks/build dev
-### ./hooks/test dev
-### or with additional arguments
-### ./hooks/build dev --no-cache
-### ./hooks/test dev
-### or using the utility
-### ./utils/util-hdx.sh Dockerfile 3
-### ./utils/util-hdx.sh Dockerfile 4
-### The last output line should be '+ exit 0'
-### If '+ exit 1' then adjust the version sticker
-### variables in script './hooks/env'
-
-ARG BASETAG=latest
-
-FROM accetto/ubuntu-vnc-xfce:${BASETAG} as stage-install
-
-### Be sure to use root user
-USER 0
-
-### 'apt-get clean' runs automatically
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        chromium-browser \
-        neofetch \
-        python3-pip \
-        firefox \
-        sudo \
-        unzip \
-        git \
-        curl \
-        default-jdk \
-        snapd \
-    && curl -sL https://deb.nodesource.com/setup_16.x | sudo -E bash -\
-    && apt install nodejs\
-    && apt-get -y autoremove \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ansible \
+    git \
+    unzip \
+    xz-utils \
+    openssh-client \
+    openssl \
+    dnsutils \
+    curl \
+    sudo \
+    screen \
+    smbclient \
+    wget \
+    rsync \
+    whois \
+    netcat \
+    nmap \
+    terminator \
+    tmux \
+    vim \
+    neofetch \
+    wget \
+    curl \
+    net-tools \
+    locales \
+    bzip2 \
+    python3-numpy \
+    supervisor \
+    xdotool \
+    zsh \
     && rm -rf /var/lib/apt/lists/*
-### Chromium browser requires some presets
-### Note that 'no-sandbox' flag is required, but intended for development only
-RUN echo "CHROMIUM_FLAGS='--no-sandbox --disable-gpu --user-data-dir --window-size=${VNC_RESOLUTION%x*},${VNC_RESOLUTION#*x} --window-position=0,0'" > ${HOME}/.chromium-browser.init
+RUN curl -sL https://deb.nodesource.com/setup_20.x | sudo -E bash -\
+    && apt install nodejs
+WORKDIR /home/
 
-FROM stage-install as stage-config
+ARG RELEASE_TAG="openvscode-server-v1.82.2"
+ARG RELEASE_ORG="gitpod-io"
+ARG OPENVSCODE_SERVER_ROOT="/home/.openvscode-server"
 
-### Arguments can be provided during build
-ARG ARG_VNC_USER
+# Downloading the latest VSC Server release and extracting the release archive
+# Rename `openvscode-server` cli tool to `code` for convenience
+RUN if [ -z "${RELEASE_TAG}" ]; then \
+        echo "The RELEASE_TAG build arg must be set." >&2 && \
+        exit 1; \
+    fi && \
+    arch=$(uname -m) && \
+    if [ "${arch}" = "x86_64" ]; then \
+        arch="x64"; \
+    elif [ "${arch}" = "aarch64" ]; then \
+        arch="arm64"; \
+    elif [ "${arch}" = "armv7l" ]; then \
+        arch="armhf"; \
+    fi && \
+    wget https://github.com/${RELEASE_ORG}/openvscode-server/releases/download/${RELEASE_TAG}/${RELEASE_TAG}-linux-${arch}.tar.gz && \
+    tar -xzf ${RELEASE_TAG}-linux-${arch}.tar.gz && \
+    mv -f ${RELEASE_TAG}-linux-${arch} ${OPENVSCODE_SERVER_ROOT} && \
+    cp ${OPENVSCODE_SERVER_ROOT}/bin/remote-cli/openvscode-server ${OPENVSCODE_SERVER_ROOT}/bin/remote-cli/code && \
+    rm -f ${RELEASE_TAG}-linux-${arch}.tar.gz
 
-ENV VNC_USER=${ARG_VNC_USER:-headless:headless}
+ARG USERNAME=user
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
 
-WORKDIR ${HOME}
-SHELL ["/bin/bash", "-c"]
+# Creating the user and usergroup
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USERNAME -m -s /bin/bash $USERNAME \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME
 
-COPY [ "./src/create_user_and_fix_permissions.sh", "./" ]
+RUN chmod g+rw /home && \
+    mkdir -p /home/workspace && \
+    chown -R $USERNAME:$USERNAME /home/workspace && \
+    chown -R $USERNAME:$USERNAME ${OPENVSCODE_SERVER_ROOT}
 
-### 'sync' mitigates automated build failures
-RUN chmod +x \
-        ./create_user_and_fix_permissions.sh \
-    && sync \
-    && ./create_user_and_fix_permissions.sh $STARTUPDIR $HOME \
-    && rm ./create_user_and_fix_permissions.sh
+USER $USERNAME
 
-FROM stage-config as stage-final
+WORKDIR /home/workspace/
 
-### Arguments can be provided during build
-ARG ARG_REFRESHED_AT
-ARG ARG_VCS_REF
-ARG ARG_VERSION_STICKER
-ARG ARG_VNC_BLACKLIST_THRESHOLD
-ARG ARG_VNC_BLACKLIST_TIMEOUT
-ARG ARG_VNC_RESOLUTION
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    HOME=/home/workspace \
+    EDITOR=code \
+    VISUAL=code \
+    GIT_EDITOR="code --wait" \
+    OPENVSCODE_SERVER_ROOT=${OPENVSCODE_SERVER_ROOT}
 
-LABEL \
-    any.accetto.description="Headless Ubuntu VNC/noVNC container with Xfce desktop and Chromium Browser" \
-    any.accetto.display-name="Headless Ubuntu/Xfce VNC/noVNC container with Firefox and Chromium" \
-    any.accetto.tags="ubuntu, xfce, vnc, novnc, chromium" \
-    version-sticker="${ARG_VERSION_STICKER}" \
-    org.label-schema.vcs-ref="${ARG_VCS_REF}" \
-    org.label-schema.vcs-url="https://github.com/accetto/ubuntu-vnc-xfce-chromium"
+# Install Softwares
+RUN yes | sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+RUN sudo chsh -s ~/.zshrc
 
-ENV \
-    REFRESHED_AT=${ARG_REFRESHED_AT} \
-    VERSION_STICKER=${ARG_VERSION_STICKER} \
-    VNC_BLACKLIST_THRESHOLD=${ARG_VNC_BLACKLIST_THRESHOLD:-20} \
-    VNC_BLACKLIST_TIMEOUT=${ARG_VNC_BLACKLIST_TIMEOUT:-0} \
-    VNC_RESOLUTION=${ARG_VNC_RESOLUTION:-1360x768}
+# Install VS Code Extensions
+ENV OPENVSCODE="${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server"
+RUN ${OPENVSCODE} --install-extension ms-python.python && \
+    ${OPENVSCODE} --install-extension monokai.theme-monokai-pro-vscode
 
-### Preconfigure Xfce
-COPY [ "./src/home/Desktop", "./Desktop/" ]
-COPY [ "./src/home/config/xfce4/panel", "./.config/xfce4/panel/" ]
-COPY [ "./src/home/config/xfce4/xfconf/xfce-perchannel-xml", "./.config/xfce4/xfconf/xfce-perchannel-xml/" ]
-COPY [ "./src/startup/version_sticker.sh", "${STARTUPDIR}/" ]
+RUN sudo mkdir -p /data && sudo chown $USERNAME: /data
 
-### Fix permissions
-RUN \
-    chmod a+wx "${STARTUPDIR}"/version_sticker.sh \
-    && "${STARTUPDIR}"/set_user_permissions.sh "${STARTUPDIR}" "${HOME}"
+EXPOSE 7860
 
-### Switch to non-root user
-USER 0
-
-### Issue #7 (base): Mitigating problems with foreground mode
-WORKDIR ${STARTUPDIR}
+ENTRYPOINT [ "/bin/sh", "-c", "exec ${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server --host 0.0.0.0 --port 7860 --without-connection-token"]
